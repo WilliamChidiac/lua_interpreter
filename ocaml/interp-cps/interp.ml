@@ -144,8 +144,8 @@ and interp_funcall (env : env) ((exp, args) : functioncall) (co : coroutine)
       | CoroutCreate ->
           let arg = List.hd arg_list in
           interp_exp env arg co (fun v ->
-              match v with
-              | Value.Function (Closure (params, lenv, blk)) ->
+              match Value.as_function v with
+              | Closure (params, lenv, blk) ->
                   let locals = create_scope params [] in
                   let new_env =
                     Value.
@@ -155,8 +155,7 @@ and interp_funcall (env : env) ((exp, args) : functioncall) (co : coroutine)
                   let rec continuation value =
                     if List.length params = 1 then
                       Value.set_ident new_env (List.hd params) value;
-                    interp_block new_env blk
-                      (Value.as_coroutine (Value.Coroutine new_co)) (fun ret ->
+                    interp_block new_env blk new_co (fun ret ->
                         match new_co with
                         | { stat = Value.Running continuation } ->
                             (Value.as_coroutine (Value.Coroutine new_co)).stat <-
@@ -179,7 +178,6 @@ and interp_funcall (env : env) ((exp, args) : functioncall) (co : coroutine)
                 interp_exp env (List.nth arg_list 0) co (fun v ->
                     continuation v)
               else continuation Value.Nil
-          | { stat = Suspended _ } -> ()
           | _ -> ())
       | CoroutResume ->
           interp_exp env (List.nth arg_list 0) co (fun v ->
@@ -192,16 +190,14 @@ and interp_funcall (env : env) ((exp, args) : functioncall) (co : coroutine)
                     interp_exp env arg co (fun v -> continuation v)
                   else continuation Value.Nil
               | { stat = Value.Dead } ->
-                  failwith "Cannot resume a dead coroutine\n"
-              | { stat = Value.Running _ } -> ()
-              | _ -> failwith "Not implemented in coroutine resume")
+                  failwith "Coroutine is already dead."
+              | { stat = Value.Running _ } -> ())
       | CoroutStatus ->
           interp_exp env (List.hd arg_list) co (fun v ->
               match Value.as_coroutine v with
               | { stat = Value.Suspended _ } -> k (Value.String "suspended")
               | { stat = Value.Running _ } -> k (Value.String "running")
-              | { stat = Value.Dead } -> k (Value.String "dead"))
-      | _ -> failwith "Not implemented in function call")
+              | { stat = Value.Dead } -> k (Value.String "dead")))
 
 and interp_exp (env : env) (e : exp) (co : coroutine) (k : value -> unit) : unit
     =
